@@ -14,12 +14,15 @@ const SimulationTab = ({
   const containerRef = useRef(null);
   const animationRef = useRef(null);
   const antImgRef = useRef(null);
+  const [imageLoaded, setImageLoaded] = useState(false);
   
   useEffect(() => {
     const img = new Image();
-    img.src = '/mravenec.png';
+    const basePath = import.meta.env.BASE_URL || '/';
+    img.src = `${basePath.endsWith('/') ? basePath : basePath + '/'}mravenec.png`;
     img.onload = () => {
       antImgRef.current = img;
+      setImageLoaded(true);
     };
   }, []);
   
@@ -56,6 +59,9 @@ const SimulationTab = ({
       let timeInNegativeExtreme = 0;
       let stepCount = 0;
 
+      // Start point at t = 0
+      path.push({ x, y, time: 0, angle: 0 });
+
       while (x < width - 30 && t < 45) {
         // Change angle every 1s (10 steps of 0.1s)
         if (stepCount % 10 === 0) {
@@ -87,16 +93,29 @@ const SimulationTab = ({
         }
         
         let dt = 0.1;
+        const prevX = x;
+        const prevY = y;
         x += v * Math.cos(currentAngle) * dt;
         y += v * Math.sin(currentAngle) * dt;
         
         // Boundaries
-        if (y < 20) { y = 20; currentAngle = -currentAngle; }
-        if (y > height - 20) { y = height - 20; currentAngle = -currentAngle; }
+        if (y < 20) { 
+          y = 20; 
+          currentAngle = Math.abs(currentAngle); 
+        }
+        if (y > height - 20) { 
+          y = height - 20; 
+          currentAngle = -Math.abs(currentAngle); 
+        }
         
         t += dt;
         stepCount += 1;
-        path.push({ x, y, time: Number(t.toFixed(1)), angle: currentAngle });
+        const actualAngle = Math.atan2(y - prevY, x - prevX);
+        path.push({ x, y, time: Number(t.toFixed(1)), angle: actualAngle });
+      }
+
+      if (path.length > 1) {
+        path[0].angle = path[1].angle;
       }
       
       setAntPath(path);
@@ -166,12 +185,12 @@ const SimulationTab = ({
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
     }
 
-    // Helper to draw Ant
+    // Helper to draw Ant (with head pointing in direction of angle)
     const drawAnt = (x, y, color = '#0f2c59', opacity = 1, angle = 0) => {
       ctx.save();
       ctx.globalAlpha = opacity;
       ctx.translate(x, y);
-      ctx.rotate(angle + Math.PI / 2); // Rotate +90deg assuming ant image faces UP
+      ctx.rotate(angle + Math.PI / 2); // Rotate +90deg because both ant image and fallback head face UP (-y)
       
       if (antImgRef.current) {
         const imgW = 29.04; // 26.4 * 1.1
@@ -179,18 +198,30 @@ const SimulationTab = ({
         ctx.drawImage(antImgRef.current, -imgW/2, -imgH/2, imgW, imgH);
       } else {
         ctx.fillStyle = color;
+        // Head (top)
         ctx.beginPath();
-        ctx.arc(0, 0, 4, 0, 2 * Math.PI); 
+        ctx.arc(0, -6, 4, 0, 2 * Math.PI); 
         ctx.fill();
+        // Thorax (center)
         ctx.beginPath();
-        ctx.arc(-6, 0, 5, 0, 2 * Math.PI); 
+        ctx.arc(0, 0, 3.5, 0, 2 * Math.PI); 
         ctx.fill();
+        // Abdomen (bottom)
+        ctx.beginPath();
+        ctx.arc(0, 7, 5, 0, 2 * Math.PI); 
+        ctx.fill();
+        // Legs & Antennae
         ctx.strokeStyle = color;
         ctx.lineWidth = 1.5;
         [-1, 1].forEach(side => {
-          ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(4, 6 * side); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(-3, 0); ctx.lineTo(-3, 7 * side); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(-10, 6 * side); ctx.stroke();
+          // Antennae
+          ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(4 * side, -12); ctx.stroke();
+          // Front legs
+          ctx.beginPath(); ctx.moveTo(0, -2); ctx.lineTo(6 * side, -5); ctx.stroke();
+          // Middle legs
+          ctx.beginPath(); ctx.moveTo(0, 1); ctx.lineTo(7 * side, 1); ctx.stroke();
+          // Back legs
+          ctx.beginPath(); ctx.moveTo(0, 4); ctx.lineTo(6 * side, 8); ctx.stroke();
         });
       }
       ctx.restore();
@@ -229,8 +260,33 @@ const SimulationTab = ({
       const prevPoint = antPath.find(p => p.time >= prevTime) || antPath[0];
       const currentPoint = antPath.find(p => p.time >= currentMeasureTime) || antPath[antPath.length - 1];
       
-      drawAnt(prevPoint.x, prevPoint.y, '#555555', 0.5, prevPoint.angle || 0); // Ghost
-      drawAnt(currentPoint.x, currentPoint.y, '#0f2c59', 1, currentPoint.angle || 0);
+      // Step direction of movement between previous and current step
+      const stepAngle = Math.atan2(currentPoint.y - prevPoint.y, currentPoint.x - prevPoint.x);
+
+      drawAnt(prevPoint.x, prevPoint.y, '#555555', 0.5, stepAngle); // Ghost
+      drawAnt(currentPoint.x, currentPoint.y, '#0f2c59', 1, stepAngle);
+    }
+    else if (appState === 'done') {
+      // Draw full path
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(198, 124, 78, 0.6)';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < antPath.length; i++) {
+        if (i === 0) ctx.moveTo(antPath[i].x, antPath[i].y);
+        else ctx.lineTo(antPath[i].x, antPath[i].y);
+      }
+      ctx.stroke();
+
+      if (antPath.length > 0) {
+        const lastPoint = antPath[antPath.length - 1];
+        drawAnt(lastPoint.x, lastPoint.y, '#0f2c59', 1, lastPoint.angle || 0);
+      }
+    }
+    else if (appState === 'idle') {
+      // Draw ant at start position facing right
+      const startX = 30;
+      const startY = height / 2;
+      drawAnt(startX, startY, '#0f2c59', 1, 0);
     }
 
     // Draw Ruler
@@ -262,6 +318,13 @@ const SimulationTab = ({
     }
 
   }, [appState, antPath, currentAnimTime, currentMeasureTime, ruler]);
+
+  // Redraw when image finishes loading
+  useEffect(() => {
+    if (imageLoaded) {
+      draw();
+    }
+  }, [imageLoaded, draw]);
 
   // Request redraw when dependencies change
   useEffect(() => {

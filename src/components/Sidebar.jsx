@@ -7,7 +7,7 @@ const Sidebar = ({ appState, onStart, onReset, isGraphUnlocked, currentMeasureTi
         <h1 style={{ fontSize: '1.25rem', marginBottom: '0.25rem' }}>Pohyb mravence</h1>
         <div className="divider"></div>
         <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem' }}>
-          Simulace pro výuku kinematiky na gymnáziu. Sledujte pohyb mravence a změřte jeho dráhu.
+          Simulace pro výuku kinematiky. Sledujte pohyb mravence a změřte jeho dráhu.
         </p>
       </div>
 
